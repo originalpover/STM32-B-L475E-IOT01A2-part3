@@ -1,1 +1,166 @@
-# STM32-B-L475E-IOT01A2-part3
+# STM32 IoT Project – HTS221, LIS3MDL, LSM6DSL, JSON, Bluetooth
+
+Projekt pokazuje sposób obsługi trzech czujników mierzących parametry środowiskowe na płytce **B-L475E-IOT01A2**.  
+Wszystkie czujniki komunikują się z mikrokontrolerem przez magistralę **I2C**, a dane pomiarowe są wysyłane przez **UART1** w formacie tekstowym.
+
+## Wykorzystane czujniki
+
+- **HTS221** – mierzy temperaturę i wilgotność powietrza.  
+- **LIS3MDL** – magnetometr służący do pomiaru pola magnetycznego.  
+- **LSM6DSL** – czujnik inercyjny łączący akcelerometr i żyroskop, umożliwia pomiar przyspieszeń i prędkości kątowych.
+- **SPBTLE-RF** - moduł bluetooth
+
+## Działanie programu
+
+Po uruchomieniu mikrokontrolera każdy czujnik jest inicjalizowany. Użyktkownicy za pomocą funkcji w plikach konfiguracyjnych (xxx_conf.c) mogą przetestować prawidłową inicjalizację czujników:
+- temperatura i wilgotność z HTS221
+- wektor pola magnetycznego z LIS3MDL
+- przyspieszenie i prędkość kątowa z LSM6DSL
+
+
+
+## Opis plików źródłowych
+
+### hts221_conf.c
+<img width="915" height="250" alt="Zrzut ekranu 2025-11-5 o 15 16 58" src="https://github.com/user-attachments/assets/60ebad96-e0c1-4f2f-b504-41fa3f2a3a08" />
+
+### lis3mdl_conf.c
+<img width="843" height="287" alt="Zrzut ekranu 2025-11-5 o 15 17 41" src="https://github.com/user-attachments/assets/4fc413f4-73d7-4188-9369-7fe11e540cc6" />
+
+### lsm6dsl_conf.c
+<img width="780" height="342" alt="Zrzut ekranu 2025-11-5 o 15 18 15" src="https://github.com/user-attachments/assets/504d670b-cc70-498a-a9e7-70b1cb972dac" />
+
+### BLE_conf.c
+<img width="811" height="359" alt="image" src="https://github.com/user-attachments/assets/4131df61-b3ab-4141-9a0a-9377e6541983" />
+
+**Do każego z plików .c powstał odpowiedni plik nagłówkowy, każdy z plików .c ma funkcję pozwalającą na testy prawidłowej inicjalizacji sensorów oraz wyświetlenie pomiarów w terminalu.**
+
+### Komunikacja bluetooth
+
+MX_BlueNRG_MS_Init();- funkcja odpowiedzialna za inicjalizację stosu BLE, inicjalizację wartsy HCI, ustawienie adresu MAC oraz rozpoczyna advertising
+MX_BlueNRG_MS_Process();- odpowiada za przetwarzanie zdarzeń BLE takich jak połączenia, rozłączenia, odczyty i zapisy charakterystyk oraz komunikację
+BLE_SendMessage();- odpowiada za wysłanie wiadomości
+
+
+
+**Do komunikacji z mikrokontrolerem wykorzystano aplikację nRF Connect.**
+
+
+
+**Odbiór testowej informacji**
+
+<img width="424" height="651" alt="image" src="https://github.com/user-attachments/assets/17bdcab9-95e8-4161-af5d-2771ff92fc27" />
+
+## Prezentacja wyników
+
+Plik jason_STM.c odpowiada za konstrukcję (formatowanie) danych pomiarowych. Funkcja json_create() przyjmuje nazwę parametru i jego wartość, a następnie zapisuje gotowy obiekt JSON do bufora tekstowego.
+Funkcja korzysta z snprintf() do bezpiecznego formatowania danych w postaci tekstu JSON.
+Jeśli długość wynikowego łańcucha przekroczy rozmiar bufora lub nastąpi błąd formatowania, funkcja zwraca kod błędu.
+
+<img width="748" height="326" alt="Zrzut ekranu 2025-11-5 o 18 34 37" src="https://github.com/user-attachments/assets/a93cb34e-984e-43ac-bfc7-a6239a748c1a" />
+
+
+## Agregacja danych
+
+Plik sensor_data.c integruje trzy czujniki i przygotowuje wyniki pomiarowe w formacie JSON. Funkcja Sensor_GetData() odczytuje bieżące wartości pomiarowe z czujników LSM6DSL, HTS221 i LIS3MDL, a następnie zapisuje je do wspólnej struktury SensorData_t. Z czujnika LSM6DSL pobierane są dane z akcelerometru i żyroskopu (osie X, Y, Z), z HTS221 - temperatura i wilgotność powietrza, natomiast z LIS3MDL - wartości pola magnetycznego w trzech osiach. Każdy pomiar jest sprawdzany pod kątem poprawności, a w przypadku błędu funkcja zwraca kod -1. Następnie wynikowe fragmenty są łączone przy użyciu snprintf().
+
+# Postępy drugiego zespołu
+
+### Optymalizacja głównej pętli programu
+Prace rozpoczęto od zmiany wykorzystania funkcji HAL_delay w pętli while. Zamiast funkcji wywoływanej w pollingu wykorzystano przerwania od Timera, które są znacząco mniej obciążające dla mikroprocesora.
+
+```c
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) 
+{ 
+    if (htim->Instance == TIM7) 
+    { 
+    	flag_send_data = 1; 
+    } 
+} 
+
+...
+// wiele linijek dalej
+
+while (1)
+  {
+	  if (flag_send_data)
+	      {
+	          flag_send_data = 0;  // wyczyść flagę
+
+	          HTS221_Read_Data();
+	          LSM6DSL_Read_Data();
+	          LIS3MDL_Read_Magnetic();
+
+	          if (j_johnson(json_buffer, sizeof(json_buffer)) == 0)
+	          {
+	              HAL_UART_Transmit(&huart1, (uint8_t*)json_buffer, strlen(json_buffer), HAL_MAX_DELAY);
+	          }
+
+            BLE_SendMessage("Hello from STM");
+
+	      }
+    /* USER CODE END WHILE */
+
+  MX_BlueNRG_MS_Process();
+    /* USER CODE BEGIN 3 */
+  }
+```
+
+### Wysyłanie dłuższych wiadomości
+
+Podstawowo funkcja **BLE_notify** posiada payload ograniczony do 20 bajtów. W celu umożliwienia wysłania całej wiadomości, zawartości pliku .json, napisano funkcję **BLE_SendLongMessage()**. Jej zadaniem jest zakolejkowanie wysłania odpowiedniego pakietu
+
+```c
+void BLE_SendLongMessage(char* data) { 
+    uint16_t len = strlen(data); 
+    uint16_t index = 0; 
+    uint8_t chunk_size = 20; 
+    char packet[21]; 
+ 
+    while (index < len) { 
+        uint8_t bytes_to_send = (len - index) >= chunk_size ? chunk_size : (len - index); 
+ 
+        memcpy(packet, &data[index], bytes_to_send); 
+        packet[bytes_to_send] = '\0'; 
+ 
+        BLE_SendMessage(packet); 
+ 
+        index += bytes_to_send; 
+ 
+        HAL_Delay(30); 
+    } 
+} 
+```
+
+### Komunikacja Wi-Fi 
+
+Próba uruchomienia modułu WiFi jest dostępna na branchu wifi. Jest tam teraz tylko włączona inicjalizacja modułu WiFi i uarta1.
+
+Udało się znacjonalizować moduł WiFi (ISM43340-M4G-L44) oraz wylistować dostępne sieci (chociaż czasami nie wszystkie są widoczne).
+Tryb klienta - działa poprawnie i jest w stanie wyświetlić prostą stronę. Problemem jest jedynie pobranie adresu IP, jest dostępny w logach na terminalu (UART1).
+Tryb AP - działa jedynie tworzenie i rozgłaszanie sieci (można się podłączyć np. telefonem), ale postawiony serwer www nie działa (nie wiem czemu, możliwe że jest to jakiś problem z tym jak jest on wewnętrznie zaimplementowany).
+
+Ogólnie to jest sporo problemów z tym modułem, możne o tym poczytać na np. [https://community.st.com/t5/others-hardware-and-software/soft-ap-does-not-work-with-the-cube-example-for-b-l475e-iot01a/td-p/255034]
+Nie próbowałem aktualizować firmware'u, może to by pomogło, ale nie chciałem zbrickować przez przypadek tego modułu.
+
+### Generacja wykresów i przesłanie do Thingsboard
+
+Rolą programu **plot_and_ThingsBoard.py** jest pobranie danych z portu UART, odczytane dane są prezentowane na wykresie stoworzonym przy użyciu biblioteki **matplotlib**. Kolejną rolą programu jest wysłanie danych do strony ThingBoard, gdzie dane mogą zostać wykorzystane wedle uznania użytkownika :)
+![0170bc87-340e-4f26-8bce-a52e8d4e3ebd](https://github.com/user-attachments/assets/ed88a47b-7099-4944-a10e-0c77d11efe6d)
+
+![L475E_dashboard_2](https://github.com/user-attachments/assets/cfe01c1d-622b-4d5a-8916-8db12ae5015f)
+
+Parę cennych uwag:
+- W skrypcie należy uzupełnić 'THINGSBOARD_URL' oraz ewentualnie zmienić port COM. 
+- 'THINGSBOARD_URL' można pobrać z pola Check connectivity, z komendy 'curl' dla danego urządzenia.  
+
+
+# Dalsze kroki
+
+Naszym zdaniem warto dokończyć komunikację po BLE, w taki sposób aby płytka na zasilaniu np. bateryjnym, mogła zostać umieszczona za oknem. Skąd będzie się łączyła i wysłała dane po BLE z PC/Raspberry Pi w domu, które następnie będą przesyłały dane do interfejsu smart home np. ThingsBoard ;). Warto też rozważyć wysyłanie danych po WiFi, ale nie udało nam się w pełni dokończyć tej formy komunikacji
+
+Poza tym narzędzia do przetworzenia danych po stronie odbiorczej zostały ukończone. Powodzenia!
+
+# Dodanie modułu wifi
+
+Moduł wifi został aktywowany poprzez dodanie plików inicjalizacji z przykładów udostępnionych przez producenta do płytki. Pliki inicjalizacji zostały pozmieniane aby poprawnie komunikowały się z resztą programu i zostały zamieszczone w osobnym folderze dla łatwiejszej identyfikacji (Core -> SRC/INC -> Wifi)
