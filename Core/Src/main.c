@@ -33,7 +33,7 @@
 #include "BLE_conf.h"
 
 #include "string.h"
-#include "es_wifi.h"
+#include "wifi.h"
 #include <stdio.h>
 
 
@@ -47,7 +47,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define WIFI_SSID       "----"
+#define WIFI_PASS       "----"
+#define LAPTOP_IP       "----"
+#define LAPTOP_PORT     5005
+#define WIFI_SECURITY   WIFI_ECN_WPA2_PSK
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -69,11 +73,8 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 /* USER CODE BEGIN PV */
 char json_buffer[1024];
 volatile uint8_t flag_send_data = 0;
-
-static ES_WIFIObject_t wifi;
-static uint8_t wifi_mac[6];
-
-
+char msg_buf[128];
+int16_t sent = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -143,8 +144,6 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
-
-
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -170,42 +169,57 @@ int main(void)
   MX_USB_OTG_FS_PCD_Init();
   MX_USART1_UART_Init();
   MX_TIM7_Init();
-  MX_BlueNRG_MS_Init();
+//  MX_BlueNRG_MS_Init();
   /* USER CODE BEGIN 2 */
 
 
   uart_log("\r\n=== WIFI SMOKE TEST ===\r\n");
 
-  HAL_GPIO_WritePin(ISM43362_WAKEUP_GPIO_Port, ISM43362_WAKEUP_Pin, GPIO_PIN_SET);
-  HAL_Delay(100);
+  while (1){
+	  if (WIFI_Init() == WIFI_STATUS_OK){
+		  break;
+	  }
+	  sprintf(msg_buf, "Failed init\r\n");
+	  uart_log(msg_buf);
+	  HAL_Delay(1000); // Reduce delay to keep loop responsive
 
-  HAL_GPIO_WritePin(ISM43362_RST_GPIO_Port, ISM43362_RST_Pin, GPIO_PIN_RESET);
-  HAL_Delay(200);
-  HAL_GPIO_WritePin(ISM43362_RST_GPIO_Port, ISM43362_RST_Pin, GPIO_PIN_SET);
-  HAL_Delay(1000);
-
-  ES_WIFI_Status_t s = ES_WIFI_Init(&wifi);
-  if (s == ES_WIFI_STATUS_OK) uart_log("ES_WIFI_Init: OK\r\n");
-  else                        uart_log("ES_WIFI_Init: FAIL\r\n");
-
-  if (s == ES_WIFI_STATUS_OK)
-  {
-    if (ES_WIFI_GetMACAddress(&wifi, wifi_mac, sizeof(wifi_mac)) == ES_WIFI_STATUS_OK)
-    {
-        char b[64];
-        snprintf(b, sizeof(b),
-                 "MAC: %02X:%02X:%02X:%02X:%02X:%02X\r\n",
-                 wifi_mac[0], wifi_mac[1], wifi_mac[2],
-                 wifi_mac[3], wifi_mac[4], wifi_mac[5]);
-        uart_log(b);
-    }
-    else
-    {
-        uart_log("Get MAC FAILED\r\n");
-    }
   }
 
-  BSP_I2C2_Init();
+  sprintf(msg_buf, "WiFi init\r\n");
+  uart_log(msg_buf);
+  while(1){
+	  if (WIFI_Connect(WIFI_SSID, WIFI_PASS, WIFI_SECURITY) == WIFI_STATUS_OK){
+		  break;
+	  }
+	  sprintf(msg_buf, "Failed connect\r\n");
+	  uart_log(msg_buf);
+	  HAL_Delay(1000);
+
+  }
+  sprintf(msg_buf, "WiFi connect\r\n");
+  uart_log(msg_buf);
+
+  uint8_t laptop_ip[4] = {192,168,137,1};
+  int32_t sock = 0;
+  uint8_t ip_addr[4];
+  WIFI_GetIP_Address(ip_addr,sizeof(ip_addr)/sizeof(ip_addr[0]));
+  WIFI_Status_t st;
+  while(1){
+	  for (sock = 0; sock < 4; sock++) {
+		   st = WIFI_OpenClientConnection(sock, WIFI_UDP_PROTOCOL, "udp1", laptop_ip, LAPTOP_PORT, 0);
+		  if (st == WIFI_STATUS_OK) break;
+	  }
+
+	  if (st != WIFI_STATUS_OK) {
+		  sprintf(msg_buf, "Failed opening\r\n");
+		  uart_log(msg_buf);
+		  HAL_Delay(1000); // Reduce delay to keep loop responsive
+	  }else{
+		  break;
+	  }
+  }
+
+//  BSP_I2C2_Init();
   LIS3MDL_Platform_Init();
   HTS221_Platform_Init();
   LSM6DSL_Platform_Init();
@@ -231,11 +245,12 @@ int main(void)
 	          if (j_johnson(json_buffer, sizeof(json_buffer)) == 0)
 	          {
 	              HAL_UART_Transmit(&huart1, (uint8_t*)json_buffer, strlen(json_buffer), HAL_MAX_DELAY);
+	              WIFI_SendData(sock, (uint8_t*)json_buffer, (uint16_t)strlen(json_buffer), &sent, 2000);
 	          }
 
 //	          BLE_SendMessage("Hello from STM");
 //	          BLE_SendMessage((char*)json_buffer); nie dziala
-	          BLE_SendLongMessage((char*)json_buffer); //dziala (hopefully)
+//	          BLE_SendLongMessage((char*)json_buffer); //już dziala (hopefully)
 	      }
     /* USER CODE END WHILE */
 
@@ -664,6 +679,19 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void EXTI1_IRQHandler(void)
+{
+  /* Pass control to the HAL Library */
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_1);
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == GPIO_PIN_1)
+  {
+    SPI_WIFI_ISR();
+  }
+}
 
 /* USER CODE END 4 */
 
