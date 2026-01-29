@@ -101,3 +101,42 @@ int j_johnson(char *json_buffer, uint16_t buffer_size)
 
     return 0;
 }
+
+int j_johnson2(char *json_buffer, uint16_t buffer_size)
+{
+    SensorData_t data;
+    if (Sensor_GetData(&data) != 0)
+        return -1;
+
+    int offset = 0;
+    memset(json_buffer, 0, buffer_size);
+
+    offset += snprintf(json_buffer + offset, buffer_size - offset,
+        "{"
+        "\"acc_x\":%d,"
+        "\"acc_y\":%d,"
+        "\"acc_z\":%d,"
+        "\"gyro_x\":%d,"
+        "\"gyro_y\":%d,"
+        "\"gyro_z\":%d,"
+        "\"temperature\":%.0f,"
+        "\"humidity\":%.0f,"
+        "\"mag_x\":%d,"
+        "\"mag_y\":%d,"
+        "\"mag_z\":%d"
+        "}\r\n",
+        data.acc_x,
+        data.acc_y,
+        data.acc_z,
+        data.gyro_x,
+        data.gyro_y,
+        data.gyro_z,
+        data.temperature,
+        data.humidity,
+        data.mag_x,
+        data.mag_y,
+        data.mag_z
+    );
+
+    return 0;
+}
