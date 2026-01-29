@@ -47,9 +47,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define WIFI_SSID       "----"
-#define WIFI_PASS       "----"
-#define LAPTOP_IP       "----"
+#define WIFI_SSID       "UPC4F32C3A"
+#define WIFI_PASS       "ekrbejbc5sA4"
+#define LAPTOP_IP       "192.168.0.192"
 #define LAPTOP_PORT     5005
 #define WIFI_SECURITY   WIFI_ECN_WPA2_PSK
 /* USER CODE END PD */
@@ -174,7 +174,7 @@ int main(void)
 
 
   uart_log("\r\n=== WIFI SMOKE TEST ===\r\n");
-
+  HAL_Delay(2000);
   while (1){
 	  if (WIFI_Init() == WIFI_STATUS_OK){
 		  break;
@@ -199,7 +199,7 @@ int main(void)
   sprintf(msg_buf, "WiFi connect\r\n");
   uart_log(msg_buf);
 
-  uint8_t laptop_ip[4] = {192,168,137,1};
+  uint8_t laptop_ip[4] = {192,168,0,192};
   int32_t sock = 0;
   uint8_t ip_addr[4];
   WIFI_GetIP_Address(ip_addr,sizeof(ip_addr)/sizeof(ip_addr[0]));
@@ -242,12 +242,13 @@ int main(void)
 	          LSM6DSL_Read_Data();
 	          LIS3MDL_Read_Magnetic();
 
-	          if (j_johnson(json_buffer, sizeof(json_buffer)) == 0)
+	          if (j_johnson2(json_buffer, sizeof(json_buffer)) == 0)
 	          {
 	              HAL_UART_Transmit(&huart1, (uint8_t*)json_buffer, strlen(json_buffer), HAL_MAX_DELAY);
 	              WIFI_SendData(sock, (uint8_t*)json_buffer, (uint16_t)strlen(json_buffer), &sent, 2000);
 	          }
-
+	    	  sprintf(msg_buf, "Data sent!\r\n");
+	    	  uart_log(msg_buf);
 //	          BLE_SendMessage("Hello from STM");
 //	          BLE_SendMessage((char*)json_buffer); nie dziala
 //	          BLE_SendLongMessage((char*)json_buffer); //już dziala (hopefully)

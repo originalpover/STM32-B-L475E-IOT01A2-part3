@@ -19,5 +19,6 @@ typedef struct {
 
 int Sensor_GetData(SensorData_t *data);
 int j_johnson(char *json_buffer, uint16_t buffer_size);
+int j_johnson2(char *json_buffer, uint16_t buffer_size);
 
 #endif
