@@ -167,8 +167,9 @@ Poza tym narzędzia do przetworzenia danych po stronie odbiorczej zostały ukoń
 
 Udało nam się skonfigurować moduł Wi-Fi i uruchomić przesył danych na PC przez port UDP. Do poprawnego działania wymagane jest podłączenie płytki STM32 oraz komputera PC / laptopa do tej samej sieci lokalnej. W pliku main.c jest wyznaczone miejsce, gdzie należy podać SSID oraz hasło do sieci Wi-Fi, a także adres ip komputera. W pętli głównej transmisja BLE została podmieniona na transmisję Wi-Fi. Zweryfikowaliśmy za pomocą Wireshark poprawność przesyłu ramek danych.
 
-<img src="https://github.com/user-attachments/assets/a93cb34e-984e-43ac-bfc7-a6239a748c1a" width="748">
+<img width="1536" height="578" alt="Zrzut ekranu 2026-01-29 045141" src="https://github.com/user-attachments/assets/518bba74-5ab5-4cc9-8ef3-dc5e9b530515" />
 
 Zmieniliśmy także format danych tak, aby napisany przez nas skrypt w pythonie do przesyłania danych na thingsboard, dostawał od razu odpowiedni format pliku JSON i nie musiał przeprowadzać żadnej konwersji
 
 TELEMETRY: {'acc_x': -82, 'acc_y': -67, 'acc_z': 1031, 'gyro_x': 1680, 'gyro_y': -2310, 'gyro_z': -70, 'temperature': 31, 'humidity': 44, 'mag_x': 178, 'mag_y': -286, 'mag_z': -258}
+
